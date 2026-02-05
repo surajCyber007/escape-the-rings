@@ -33,7 +33,8 @@ export default function GameCanvas() {
         const cx = 200;
         const cy = 200;
 
-        // 🟥 GAME OVER DRAW
+        let lastTime = performance.now();
+
         function drawGameOver() {
             ctx.fillStyle = "rgba(0,0,0,0.6)";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -55,7 +56,7 @@ export default function GameCanvas() {
             ctx.fillStyle = "rgba(0,0,0,0.6)";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            ctx.fillStyle = "#22c55e"; // green
+            ctx.fillStyle = "#22c55e";
             ctx.font = "bold 32px Arial";
             ctx.textAlign = "center";
             ctx.fillText("YOU WIN 🎉", canvas.width / 2, canvas.height / 2 - 10);
@@ -69,18 +70,21 @@ export default function GameCanvas() {
             );
         }
 
-        function loop() {
+        function loop(currentTime) {
+            // ⏱ DELTA TIME (FPS-INDEPENDENT)
+            const deltaTime = Math.min((currentTime - lastTime) / 1000, 0.05);
+            lastTime = currentTime;
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const { rings, ball, gameOver } = game.current;
+            const { rings, ball, gameOver, success } = game.current;
 
-            // 🛑 STOP GAME IF OVER
             if (gameOver) {
                 drawGameOver();
                 return;
             }
 
-            if (game.current.success) {
+            if (success) {
                 drawSuccess();
                 return;
             }
@@ -89,7 +93,7 @@ export default function GameCanvas() {
 
             // Draw & rotate all rings
             rings.forEach((ring, index) => {
-                ring.rotation += ring.speed;
+                ring.rotation += ring.speed * deltaTime * 60;
 
                 ctx.beginPath();
                 ctx.arc(
@@ -99,20 +103,20 @@ export default function GameCanvas() {
                     ring.rotation + ring.gapSize,
                     ring.rotation + Math.PI * 2
                 );
+
                 const ringColor =
                     index === 0
                         ? `hsl(${ring.hue}, 80%, 55%)`
                         : `hsl(${ring.hue}, 30%, 35%)`;
 
                 ctx.strokeStyle = ringColor;
-
                 ctx.lineWidth = index === 0 ? 4 : 2;
                 ctx.stroke();
             });
 
-            // Move ball
-            ball.x += ball.vx;
-            ball.y += ball.vy;
+            // Move ball (TIME-BASED)
+            ball.x += ball.vx * deltaTime * 60;
+            ball.y += ball.vy * deltaTime * 60;
 
             // Collision only with innermost ring
             const ring = rings[0];
@@ -138,11 +142,11 @@ export default function GameCanvas() {
                     ball.r += 3.5;
                     ball.vx *= 1.05;
                     ball.vy *= 1.05;
-
                 } else {
                     // COLLISION
                     ball.r += 0.05;
-                    ring.hue -= 10;          // adjust speed here
+
+                    ring.hue -= 10;
                     if (ring.hue < 0) ring.hue = 0;
 
                     const nx = dx / dist;
@@ -150,7 +154,7 @@ export default function GameCanvas() {
 
                     const { vx, vy } = reflectVelocity(ball.vx, ball.vy, nx, ny);
 
-                    // push ball inward
+                    // push inward
                     ball.x -= nx * 1.5;
                     ball.y -= ny * 1.5;
 
@@ -164,7 +168,7 @@ export default function GameCanvas() {
                 }
             }
 
-            // 🟥 GAME OVER CHECK (KEY LOGIC)
+            // GAME OVER CHECK
             const gapLength = ring.radius * ring.gapSize;
             const ballDiameter = ball.r * 2;
 
@@ -181,7 +185,7 @@ export default function GameCanvas() {
             requestAnimationFrame(loop);
         }
 
-        loop();
+        requestAnimationFrame(loop);
     }, []);
 
     return <canvas ref={canvasRef} />;
