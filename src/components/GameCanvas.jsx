@@ -15,8 +15,8 @@ export default function GameCanvas() {
         ball: {
             x: 200,
             y: 200,
-            vx: 2.3,
-            vy: 2.8,
+            vx: 160, // px per second
+            vy: 190, // px per second
             r: 8
         },
         gameOver: false,
@@ -27,98 +27,66 @@ export default function GameCanvas() {
         const canvas = canvasRef.current;
         const ctx = canvas.getContext("2d");
 
-        canvas.width = 400;
-        canvas.height = 400;
+        // 🔥 DPI-AWARE CANVAS
+        const dpr = window.devicePixelRatio || 1;
+        const WIDTH = 400;
+        const HEIGHT = 400;
 
-        const cx = 200;
-        const cy = 200;
+        canvas.width = WIDTH * dpr;
+        canvas.height = HEIGHT * dpr;
+        canvas.style.width = WIDTH + "px";
+        canvas.style.height = HEIGHT + "px";
+        ctx.scale(dpr, dpr);
 
+        const cx = WIDTH / 2;
+        const cy = HEIGHT / 2;
+
+        // ⏱ FIXED TIMESTEP
+        const FIXED_DT = 1 / 60;
+        let accumulator = 0;
         let lastTime = performance.now();
 
         function drawGameOver() {
             ctx.fillStyle = "rgba(0,0,0,0.6)";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
             ctx.fillStyle = "#fff";
             ctx.font = "bold 32px Arial";
             ctx.textAlign = "center";
-            ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 10);
+            ctx.fillText("GAME OVER", cx, cy - 10);
 
             ctx.font = "16px Arial";
-            ctx.fillText(
-                "Ball too big to escape",
-                canvas.width / 2,
-                canvas.height / 2 + 20
-            );
+            ctx.fillText("Ball too big to escape", cx, cy + 20);
         }
 
         function drawSuccess() {
             ctx.fillStyle = "rgba(0,0,0,0.6)";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
             ctx.fillStyle = "#22c55e";
             ctx.font = "bold 32px Arial";
             ctx.textAlign = "center";
-            ctx.fillText("YOU WIN 🎉", canvas.width / 2, canvas.height / 2 - 10);
+            ctx.fillText("YOU WIN 🎉", cx, cy - 10);
 
             ctx.fillStyle = "#fff";
             ctx.font = "16px Arial";
-            ctx.fillText(
-                "All rings escaped",
-                canvas.width / 2,
-                canvas.height / 2 + 20
-            );
+            ctx.fillText("All rings escaped", cx, cy + 20);
         }
 
-        function loop(currentTime) {
-            // ⏱ DELTA TIME (FPS-INDEPENDENT)
-            const deltaTime = Math.min((currentTime - lastTime) / 1000, 0.05);
-            lastTime = currentTime;
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            const { rings, ball, gameOver, success } = game.current;
-
-            if (gameOver) {
-                drawGameOver();
-                return;
-            }
-
-            if (success) {
-                drawSuccess();
-                return;
-            }
-
+        function updatePhysics(dt) {
+            const { rings, ball } = game.current;
             if (rings.length === 0) return;
 
-            // Draw & rotate all rings
-            rings.forEach((ring, index) => {
-                ring.rotation += ring.speed * deltaTime * 60;
-
-                ctx.beginPath();
-                ctx.arc(
-                    cx,
-                    cy,
-                    ring.radius,
-                    ring.rotation + ring.gapSize,
-                    ring.rotation + Math.PI * 2
-                );
-
-                const ringColor =
-                    index === 0
-                        ? `hsl(${ring.hue}, 80%, 55%)`
-                        : `hsl(${ring.hue}, 30%, 35%)`;
-
-                ctx.strokeStyle = ringColor;
-                ctx.lineWidth = index === 0 ? 4 : 2;
-                ctx.stroke();
+            // rotate rings
+            rings.forEach(ring => {
+                ring.rotation += ring.speed * dt; // rad/sec
             });
 
-            // Move ball (TIME-BASED)
-            ball.x += ball.vx * deltaTime * 60;
-            ball.y += ball.vy * deltaTime * 60;
+            // move ball
+            ball.x += ball.vx * dt;
+            ball.y += ball.vy * dt;
 
-            // Collision only with innermost ring
+            // collision with inner ring
             const ring = rings[0];
             const dx = ball.x - cx;
             const dy = ball.y - cy;
@@ -131,7 +99,6 @@ export default function GameCanvas() {
                     (ring.rotation + Math.PI * 2) % (Math.PI * 2);
 
                 if (isInGap(angle, gapStart, ring.gapSize)) {
-                    // ESCAPE
                     rings.shift();
 
                     if (rings.length === 0) {
@@ -143,11 +110,8 @@ export default function GameCanvas() {
                     ball.vx *= 1.05;
                     ball.vy *= 1.05;
                 } else {
-                    // COLLISION
                     ball.r += 0.05;
-
-                    ring.hue -= 10;
-                    if (ring.hue < 0) ring.hue = 0;
+                    ring.hue = Math.max(0, ring.hue - 8);
 
                     const nx = dx / dist;
                     const ny = dy / dist;
@@ -170,18 +134,64 @@ export default function GameCanvas() {
 
             // GAME OVER CHECK
             const gapLength = ring.radius * ring.gapSize;
-            const ballDiameter = ball.r * 2;
-
-            if (ballDiameter > gapLength) {
+            if (ball.r * 2 > gapLength) {
                 game.current.gameOver = true;
             }
+        }
 
-            // Draw ball
+        function render() {
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+            const { rings, ball, gameOver, success } = game.current;
+
+            if (gameOver) {
+                drawGameOver();
+                return;
+            }
+
+            if (success) {
+                drawSuccess();
+                return;
+            }
+
+            // draw rings
+            rings.forEach((ring, index) => {
+                ctx.beginPath();
+                ctx.arc(
+                    cx,
+                    cy,
+                    ring.radius,
+                    ring.rotation + ring.gapSize,
+                    ring.rotation + Math.PI * 2
+                );
+
+                ctx.strokeStyle =
+                    index === 0
+                        ? `hsl(${ring.hue}, 80%, 55%)`
+                        : `hsl(${ring.hue}, 30%, 35%)`;
+
+                ctx.lineWidth = index === 0 ? 4 : 2;
+                ctx.stroke();
+            });
+
+            // draw ball
             ctx.beginPath();
             ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
             ctx.fillStyle = "#3b82f6";
             ctx.fill();
+        }
 
+        function loop(now) {
+            const deltaTime = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+            accumulator += deltaTime;
+
+            while (accumulator >= FIXED_DT) {
+                updatePhysics(FIXED_DT);
+                accumulator -= FIXED_DT;
+            }
+
+            render();
             requestAnimationFrame(loop);
         }
 
